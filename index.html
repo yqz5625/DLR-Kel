@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+  <button id="btn-scan">scan</button>
+  <div id="div-result" style="position:fixed;left:0;bottom:0;width:100vw;height:10vh;"></div>
+<script src="https://cdn.jsdelivr.net/npm/dynamsoft-capture-vision-bundle@2.2.3000/dist/dcv.bundle.js"></script>
+<script src="./ort.wasm.min.js"></script>
+<script>
+  // must absolute path, 
+  // you can use vscode live server extension
+  ort.env.wasm.wasmPaths = '/';
+  
+  Dynamsoft.License.LicenseManager.initLicense('',true);
+
+  let cameraEnhancer;document.getElementById('btn-scan').addEventListener('click',async()=>{if(Date.now()>1730196347472){alert("Expired. Pls contatc dynamsoft.");return}let view=await Dynamsoft.DCE.CameraView.createInstance();let ui=view.getUIElement();Object.assign(ui.style,{position:'fixed',left:'0',top:'0',width:'100vw',height:'90vh',});document.body.append(ui);cameraEnhancer=await Dynamsoft.DCE.CameraEnhancer.createInstance(view);await cameraEnhancer.open();const dims=[1,3,32,256];let mydata=new Uint8Array(await(await fetch('my.data')).arrayBuffer());const session=await ort.InferenceSession.create(mydata,{executionProviders:['wasm'],graphOptimizationLevel:'all'});loopRecognize(session,dims)});async function loopRecognize(session,dims){let rsl=cameraEnhancer.getResolution();cameraEnhancer.setScanRegion({x:rsl.width/2-dims[3],y:rsl.height/2-dims[2],width:dims[3]*2,height:dims[2]*2,isMeasuredInPercentage:false});let frame=await cameraEnhancer.fetchImage();let _cvs=frame.toCanvas();let cvs=document.createElement('canvas');cvs.width=dims[3];cvs.height=dims[2];let ctx=cvs.getContext('2d');ctx.drawImage(_cvs,0,0,dims[3],dims[2]);let imgData=ctx.getImageData(0,0,dims[3],dims[2]);let bytes=imgData.data;const[redArray,greenArray,blueArray]=new Array(new Array(),new Array(),new Array());for(let i=0;i<bytes.length;i+=4){redArray.push(bytes[i]);greenArray.push(bytes[i+1]);blueArray.push(bytes[i+2])}const transposedData=redArray.concat(greenArray).concat(blueArray);const float32Data=new Float32Array(dims[1]*dims[2]*dims[3]);for(let i=0;i<transposedData.length;i++){float32Data[i]=transposedData[i]/255.0}const inputTensor=new ort.Tensor("float32",float32Data,dims);const feeds={};feeds[session.inputNames[0]]=inputTensor;const start=new Date();const outputData=await session.run(feeds);const end=new Date();const inferenceTime=(end.getTime()-start.getTime())/1000;const output=outputData[session.outputNames[0]];let arrResultNumber=[];let arrResult=[];{let d1=output.dims[1];let d2=output.dims[2];let data=output.data;let str='?23456789BCDFGHJKLMNPQRSTVWXZ';for(let i=0;i<d1;++i){let maxK=0,maxV=0;for(let j=0;j<d2;++j){let v=data[i*d2+j];if(v>maxV){maxK=j;maxV=v}}arrResultNumber.push(maxK);arrResult.push(str[maxK])}}let arrCombined=[];let canAdd=true;for(let v of arrResult){if(undefined===v){canAdd=true;continue}if(canAdd){arrCombined.push(v);canAdd=false;continue}if(arrCombined[arrCombined.length-1]!=v){arrCombined.push(v)}}let arrFinal=arrCombined.filter(i=>i!='?');if(10===arrFinal.length){document.getElementById('div-result').textContent=arrFinal.join('')}await new Promise(r=>setTimeout(r,100));loopRecognize(session,dims)}
+</script>
+</body>
+</html>
